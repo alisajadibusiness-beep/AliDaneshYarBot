@@ -1,18 +1,15 @@
-"""
-AliDaneshYarBot
-Personal research, education and employment-exam assistant.
-"""
-
 import asyncio
 import logging
 import sys
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 
-from config import BOT_TOKEN
-from database import init_database
+from config import (
+    BOT_TOKEN,
+    ALLOWED_USER_IDS,
+    TOPICS,
+)
+from database import init_database, seed_modules
 
 from handlers.start import router as start_router
 from handlers.search import router as search_router
@@ -32,33 +29,29 @@ from services.auto_updater import auto_update_loop
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ],
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 logger = logging.getLogger("AliDaneshYarBot")
 
 
 async def main() -> None:
-    """Start the Telegram bot."""
-
     if not BOT_TOKEN:
         raise RuntimeError(
             "BOT_TOKEN is not configured."
         )
 
+    if not ALLOWED_USER_IDS:
+        raise RuntimeError(
+            "ALLOWED_USER_IDS is not configured."
+        )
+
     logger.info("Starting AliDaneshYarBot...")
 
     await init_database()
+    await seed_modules(TOPICS)
 
-    bot = Bot(
-        token=BOT_TOKEN,
-        default=DefaultBotProperties(
-            parse_mode=ParseMode.HTML
-        ),
-    )
-
+    bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
     dp.include_router(start_router)
@@ -78,21 +71,10 @@ async def main() -> None:
     )
 
     try:
-        logger.info("AliDaneshYarBot is running.")
-
         await dp.start_polling(
             bot,
             allowed_updates=dp.resolve_used_update_types(),
         )
-
-    except asyncio.CancelledError:
-        logger.info("Polling cancelled.")
-
-    except Exception:
-        logger.exception(
-            "Fatal error while running the bot."
-        )
-        raise
 
     finally:
         updater_task.cancel()
@@ -104,11 +86,9 @@ async def main() -> None:
 
         await bot.session.close()
 
-        logger.info("AliDaneshYarBot stopped.")
-
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Bot stopped manually.")
+        logger.info("Bot stopped.")
