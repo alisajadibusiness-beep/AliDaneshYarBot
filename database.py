@@ -1,134 +1,91 @@
 """
 AliDaneshYarBot
 database.py
-
-SQLite database layer for:
-- Users
-- Educational modules
-- Lessons
-- Questions
-- Articles
-- Bookmarks
-- Progress
-- Quiz results
-- Flashcards
-- Study plans
-- Settings
-- Personal files
-- Search history
-- Weak topics
-- Notifications
-- Scientific sources
-- Article topics
-
-Important:
-The database connection is intentionally created as an async context
-manager and is NOT awaited before entering the context.
-
-Correct usage:
+SQLite database layer.
+IMPORTANT:
+aiosqlite connections must be used like this:
     async with get_db() as db:
         ...
-
-This avoids the aiosqlite error:
+NEVER use:
+    async with await get_db() as db:
+That pattern can cause:
     RuntimeError: threads can only be started once
 """
-
 from __future__ import annotations
-
 import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
 import aiosqlite
-
 from config import DB_PATH
-
 logger = logging.getLogger("AliDaneshYarBot.database")
-
-
-# ============================================================
-# Constants
-# ============================================================
-
 DATABASE_PATH = Path(DB_PATH)
-
-DATABASE_PATH.parent.mkdir(
-    parents=True,
-    exist_ok=True,
-)
-
-
+DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 # ============================================================
-# Time helpers
+# TIME
 # ============================================================
-
 def utc_now() -> str:
-    """
-    Return current UTC time as ISO-8601 string.
-    """
     return datetime.now(timezone.utc).isoformat()
-
-
 # ============================================================
-# Database connection
+# DATABASE CONNECTION
 # ============================================================
-
 def get_db() -> aiosqlite.Connection:
     """
-    Return a new aiosqlite connection context.
-
-    IMPORTANT:
-    Do NOT use:
-        async with await get_db()
-
-    Use:
+    Return a fresh, unstarted aiosqlite connection.
+    Correct:
         async with get_db() as db:
+    Incorrect:
+        async with await get_db() as db:
     """
     return aiosqlite.connect(
         str(DATABASE_PATH),
         timeout=30,
     )
-
-
 async def configure_database(
     db: aiosqlite.Connection,
 ) -> None:
-    """
-    Configure SQLite connection.
-    """
-
-    await db.execute(
-        "PRAGMA foreign_keys = ON"
-    )
-
-    await db.execute(
-        "PRAGMA journal_mode = WAL"
-    )
-
-    await db.execute(
-        "PRAGMA busy_timeout = 30000"
-    )
-
-
+    await db.execute("PRAGMA foreign_keys = ON")
+    await db.execute("PRAGMA busy_timeout = 30000")
+    # WAL is useful for Render/SQLite workloads.
+    try:
+        await db.execute("PRAGMA journal_mode = WAL")
+    except Exception:
+        logger.warning(
+            "Could not enable SQLite WAL mode.",
+            exc_info=True,
+        )
 # ============================================================
-# Database initialization
+# ROW HELPERS
 # ============================================================
-
+def row_to_dict(
+    row: aiosqlite.Row | None,
+) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {
+        key: row[key]
+        for key in row.keys()
+    }
+def rows_to_dicts(
+    rows: list[aiosqlite.Row],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            key: row[key]
+            for key in row.keys()
+        }
+        for row in rows
+    ]
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
 async def init_database() -> None:
-    """
-    Create all required database tables and indexes.
-    """
-
     async with get_db() as db:
-
         await configure_database(db)
-
         # ----------------------------------------------------
-        # Users
+        # USERS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -144,11 +101,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Educational modules
+        # MODULES
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS modules (
@@ -164,11 +119,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Lessons
+        # LESSONS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS lessons (
@@ -192,11 +145,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Questions
+        # QUESTIONS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS questions (
@@ -223,11 +174,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Articles
+        # ARTICLES
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS articles (
@@ -258,11 +207,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Bookmarks
+        # BOOKMARKS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS bookmarks (
@@ -285,11 +232,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Progress
+        # PROGRESS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS progress (
@@ -317,11 +262,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Quiz results
+        # QUIZ RESULTS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS quiz_results (
@@ -347,11 +290,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Flashcards
+        # FLASHCARDS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS flashcards (
@@ -380,11 +321,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Study plans
+        # STUDY PLANS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS study_plans (
@@ -412,11 +351,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Settings
+        # SETTINGS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS settings (
@@ -433,11 +370,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Personal files
+        # FILES
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS files (
@@ -457,11 +392,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Search history
+        # SEARCH HISTORY
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS search_history (
@@ -477,11 +410,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Weak topics
+        # WEAK TOPICS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS weak_topics (
@@ -499,11 +430,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Notifications
+        # NOTIFICATIONS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS notifications (
@@ -522,11 +451,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Scientific sources
+        # SOURCES
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS sources (
@@ -542,11 +469,9 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Article topics
+        # ARTICLE TOPICS
         # ----------------------------------------------------
-
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS article_topics (
@@ -562,153 +487,97 @@ async def init_database() -> None:
             )
             """
         )
-
         # ----------------------------------------------------
-        # Indexes
+        # INDEXES
         # ----------------------------------------------------
-
         indexes = [
             """
             CREATE INDEX IF NOT EXISTS idx_users_telegram_id
             ON users(telegram_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_modules_key
             ON modules(module_key)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_lessons_module
             ON lessons(module_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_questions_module
             ON questions(module_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_questions_lesson
             ON questions(lesson_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_articles_doi
             ON articles(doi)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_articles_external_id
             ON articles(external_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_articles_source
             ON articles(source)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_articles_published
             ON articles(published)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_bookmarks_user
             ON bookmarks(user_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_progress_user
             ON progress(user_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_quiz_user
             ON quiz_results(user_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_flashcards_user
             ON flashcards(user_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_study_plans_user
             ON study_plans(user_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_files_user
             ON files(user_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_search_history_user
             ON search_history(user_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_weak_topics_user
             ON weak_topics(user_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_notifications_user
             ON notifications(user_id)
             """,
-
             """
             CREATE INDEX IF NOT EXISTS idx_article_topics_article
             ON article_topics(article_id)
             """,
         ]
-
         for statement in indexes:
             await db.execute(statement)
-
         await db.commit()
-
     logger.info(
-        "SQLite database initialized at %s",
+        "SQLite database initialized successfully: %s",
         DATABASE_PATH,
     )
-
-
 # ============================================================
-# Row helpers
+# USERS
 # ============================================================
-
-def row_to_dict(
-    row: aiosqlite.Row | None,
-) -> dict[str, Any] | None:
-
-    if row is None:
-        return None
-
-    return {
-        key: row[key]
-        for key in row.keys()
-    }
-
-
-def rows_to_dicts(
-    rows: list[aiosqlite.Row],
-) -> list[dict[str, Any]]:
-
-    return [
-        {
-            key: row[key]
-            for key in row.keys()
-        }
-        for row in rows
-    ]
-
-
-# ============================================================
-# Users
-# ============================================================
-
 async def register_user(
     telegram_id: int,
     username: str | None = None,
@@ -716,13 +585,9 @@ async def register_user(
     last_name: str | None = None,
     language: str = "fa",
 ) -> dict[str, Any]:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         await db.execute(
             """
             INSERT INTO users (
@@ -755,9 +620,7 @@ async def register_user(
                 now,
             ),
         )
-
         await db.commit()
-
         cursor = await db.execute(
             """
             SELECT *
@@ -766,21 +629,14 @@ async def register_user(
             """,
             (telegram_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         return row_to_dict(row) or {}
-
-
 async def get_user(
     telegram_id: int,
 ) -> dict[str, Any] | None:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT *
@@ -789,43 +645,21 @@ async def get_user(
             """,
             (telegram_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         return row_to_dict(row)
-
-
 # ============================================================
-# Modules
+# MODULES
 # ============================================================
-
 async def seed_modules(
     modules: dict[str, str] | list[dict[str, Any]],
 ) -> None:
-    """
-    Insert/update educational modules.
-
-    This function deliberately uses:
-        async with get_db() as db:
-
-    instead of:
-        async with await get_db() as db
-
-    which caused the Render crash.
-    """
-
     if not modules:
         return
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         if isinstance(modules, dict):
-
             items = [
                 {
                     "module_key": str(key),
@@ -837,31 +671,29 @@ async def seed_modules(
                 for index, (key, title)
                 in enumerate(modules.items())
             ]
-
         else:
-
             items = []
-
             for index, item in enumerate(modules):
-
                 if not isinstance(item, dict):
                     continue
-
                 module_key = (
                     item.get("module_key")
                     or item.get("key")
                     or item.get("id")
                 )
-
                 title = (
                     item.get("title")
                     or item.get("name")
                     or module_key
                 )
-
                 if not module_key or not title:
                     continue
-
+                try:
+                    sort_order = int(
+                        item.get("sort_order", index)
+                    )
+                except (TypeError, ValueError):
+                    sort_order = index
                 items.append(
                     {
                         "module_key": str(module_key),
@@ -873,15 +705,10 @@ async def seed_modules(
                             item.get("category")
                             or "education"
                         ),
-                        "sort_order": int(
-                            item.get("sort_order")
-                            or index
-                        ),
+                        "sort_order": sort_order,
                     }
                 )
-
         for item in items:
-
             await db.execute(
                 """
                 INSERT INTO modules (
@@ -900,8 +727,8 @@ async def seed_modules(
                     title = excluded.title,
                     description = excluded.description,
                     category = excluded.category,
-                    sort_order = excluded.sort_order,
                     is_active = 1,
+                    sort_order = excluded.sort_order,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -914,21 +741,14 @@ async def seed_modules(
                     now,
                 ),
             )
-
         await db.commit()
-
     logger.info(
-        "Educational modules seeded successfully: %s",
+        "Educational modules seeded: %s",
         len(items),
     )
-
-
 async def get_modules() -> list[dict[str, Any]]:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT *
@@ -937,21 +757,14 @@ async def get_modules() -> list[dict[str, Any]]:
             ORDER BY sort_order ASC, id ASC
             """
         )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 async def get_module(
     module_key: str,
 ) -> dict[str, Any] | None:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT *
@@ -960,17 +773,12 @@ async def get_module(
             """,
             (str(module_key).strip(),),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         return row_to_dict(row)
-
-
 # ============================================================
-# Lessons
+# LESSONS
 # ============================================================
-
 async def add_lesson(
     module_id: int,
     title: str,
@@ -982,19 +790,14 @@ async def add_lesson(
     level: str = "",
     keywords: str | list[str] = "",
 ) -> int:
-
     now = utc_now()
-
     if isinstance(keywords, list):
         keywords = json.dumps(
             keywords,
             ensure_ascii=False,
         )
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             INSERT INTO lessons (
@@ -1027,22 +830,14 @@ async def add_lesson(
                 now,
             ),
         )
-
         lesson_id = cursor.lastrowid
-
         await db.commit()
-
         return int(lesson_id)
-
-
 async def get_lessons(
     module_id: int,
 ) -> list[dict[str, Any]]:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT *
@@ -1053,21 +848,14 @@ async def get_lessons(
             """,
             (module_id,),
         )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 async def get_lesson(
     lesson_id: int,
 ) -> dict[str, Any] | None:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT *
@@ -1076,17 +864,12 @@ async def get_lesson(
             """,
             (lesson_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         return row_to_dict(row)
-
-
 # ============================================================
-# Questions
+# QUESTIONS
 # ============================================================
-
 async def add_question(
     question: str,
     options: list | dict | str,
@@ -1100,21 +883,15 @@ async def add_question(
     source: str = "",
     year: int | None = None,
 ) -> int:
-
     now = utc_now()
-
     if not isinstance(options, str):
         options = json.dumps(
             options,
             ensure_ascii=False,
         )
-
     correct = correct_answer or answer
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             INSERT INTO questions (
@@ -1150,28 +927,18 @@ async def add_question(
                 now,
             ),
         )
-
         question_id = cursor.lastrowid
-
         await db.commit()
-
         return int(question_id)
-
-
 async def get_questions(
     module_id: int | None = None,
     lesson_id: int | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-
     limit = max(1, min(int(limit), 500))
-
     async with get_db() as db:
-
         await configure_database(db)
-
         if lesson_id is not None:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1180,14 +947,9 @@ async def get_questions(
                 ORDER BY id ASC
                 LIMIT ?
                 """,
-                (
-                    lesson_id,
-                    limit,
-                ),
+                (lesson_id, limit),
             )
-
         elif module_id is not None:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1196,14 +958,9 @@ async def get_questions(
                 ORDER BY id ASC
                 LIMIT ?
                 """,
-                (
-                    module_id,
-                    limit,
-                ),
+                (module_id, limit),
             )
-
         else:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1213,144 +970,117 @@ async def get_questions(
                 """,
                 (limit,),
             )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 # ============================================================
-# Articles
+# ARTICLES
 # ============================================================
-
 async def upsert_article(
     article: dict[str, Any],
 ) -> int:
-
     now = utc_now()
-
     title = str(
         article.get("title")
         or "بدون عنوان"
     ).strip()
-
     doi = str(
         article.get("doi")
         or ""
     ).strip()
-
     external_id = str(
         article.get("external_id")
         or article.get("id")
         or ""
     ).strip()
-
     url = str(
         article.get("url")
         or article.get("source_url")
         or ""
     ).strip()
-
     pdf_url = str(
         article.get("pdf_url")
         or article.get("pdf")
         or ""
     ).strip()
-
-    authors = article.get(
-        "authors"
-    ) or article.get("author") or ""
-
+    authors = (
+        article.get("authors")
+        or article.get("author")
+        or ""
+    )
     if isinstance(authors, list):
         authors = json.dumps(
             authors,
             ensure_ascii=False,
         )
-
     abstract = str(
         article.get("abstract")
         or ""
     )
-
     journal = str(
         article.get("journal")
         or article.get("container_title")
         or ""
     )
-
     published = str(
         article.get("published")
         or article.get("published_date")
         or article.get("date")
         or ""
     )
-
     source = str(
         article.get("source")
         or article.get("source_name")
         or ""
     )
-
     source_id = str(
         article.get("source_id")
         or ""
     )
-
     language = str(
         article.get("language")
         or "en"
     )
-
     topic = str(
         article.get("topic")
         or ""
     )
-
-    keywords = article.get(
-        "keywords"
-    ) or ""
-
+    keywords = (
+        article.get("keywords")
+        or ""
+    )
     if isinstance(keywords, list):
         keywords = json.dumps(
             keywords,
             ensure_ascii=False,
         )
-
-    is_open_access = int(
-        bool(
-            article.get("is_open_access")
-            or article.get("open_access")
-            or pdf_url
+    try:
+        citation_count = int(
+            article.get("citation_count")
+            or article.get("cited_by_count")
+            or 0
         )
-    )
-
-    citation_count = int(
-        article.get("citation_count")
-        or article.get("cited_by_count")
-        or 0
-    )
-
-    relevance_score = float(
-        article.get("relevance_score")
-        or 0
-    )
-
+    except (TypeError, ValueError):
+        citation_count = 0
+    try:
+        relevance_score = float(
+            article.get("relevance_score")
+            or 0
+        )
+    except (TypeError, ValueError):
+        relevance_score = 0.0
     translated_title = str(
         article.get("translated_title")
         or ""
     )
-
     translated_abstract = str(
         article.get("translated_abstract")
         or ""
     )
-
     summary = str(
         article.get("summary")
         or ""
     )
-
     is_translated = int(
         bool(
             article.get("is_translated")
@@ -1358,15 +1088,18 @@ async def upsert_article(
             or translated_abstract
         )
     )
-
+    is_open_access = int(
+        bool(
+            article.get("is_open_access")
+            or article.get("open_access")
+            or pdf_url
+        )
+    )
     async with get_db() as db:
-
         await configure_database(db)
-
         existing_id = None
-
+        # DOI
         if doi:
-
             cursor = await db.execute(
                 """
                 SELECT id
@@ -1376,15 +1109,12 @@ async def upsert_article(
                 """,
                 (doi,),
             )
-
             row = await cursor.fetchone()
             await cursor.close()
-
             if row:
                 existing_id = row["id"]
-
+        # External ID
         if existing_id is None and external_id:
-
             cursor = await db.execute(
                 """
                 SELECT id
@@ -1394,15 +1124,12 @@ async def upsert_article(
                 """,
                 (external_id,),
             )
-
             row = await cursor.fetchone()
             await cursor.close()
-
             if row:
                 existing_id = row["id"]
-
+        # URL
         if existing_id is None and url:
-
             cursor = await db.execute(
                 """
                 SELECT id
@@ -1412,15 +1139,34 @@ async def upsert_article(
                 """,
                 (url,),
             )
-
             row = await cursor.fetchone()
             await cursor.close()
-
             if row:
                 existing_id = row["id"]
-
+        values = (
+            external_id,
+            doi,
+            title,
+            authors,
+            abstract,
+            journal,
+            published,
+            url,
+            pdf_url,
+            source,
+            source_id,
+            language,
+            topic,
+            keywords,
+            is_open_access,
+            citation_count,
+            relevance_score,
+            is_translated,
+            translated_title,
+            translated_abstract,
+            summary,
+        )
         if existing_id is not None:
-
             await db.execute(
                 """
                 UPDATE articles
@@ -1449,37 +1195,13 @@ async def upsert_article(
                     updated_at = ?
                 WHERE id = ?
                 """,
-                (
-                    external_id,
-                    doi,
-                    title,
-                    authors,
-                    abstract,
-                    journal,
-                    published,
-                    url,
-                    pdf_url,
-                    source,
-                    source_id,
-                    language,
-                    topic,
-                    keywords,
-                    is_open_access,
-                    citation_count,
-                    relevance_score,
-                    is_translated,
-                    translated_title,
-                    translated_abstract,
-                    summary,
+                values + (
                     now,
                     existing_id,
                 ),
             )
-
             await db.commit()
-
             return int(existing_id)
-
         cursor = await db.execute(
             """
             INSERT INTO articles (
@@ -1507,50 +1229,24 @@ async def upsert_article(
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
             """,
-            (
-                external_id,
-                doi,
-                title,
-                authors,
-                abstract,
-                journal,
-                published,
-                url,
-                pdf_url,
-                source,
-                source_id,
-                language,
-                topic,
-                keywords,
-                is_open_access,
-                citation_count,
-                relevance_score,
-                is_translated,
-                translated_title,
-                translated_abstract,
-                summary,
+            values + (
                 now,
                 now,
             ),
         )
-
         article_id = cursor.lastrowid
-
         await db.commit()
-
         return int(article_id)
-
-
 async def get_article(
     article_id: int,
 ) -> dict[str, Any] | None:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT *
@@ -1559,31 +1255,18 @@ async def get_article(
             """,
             (article_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         return row_to_dict(row)
-
-
 async def search_articles(
     query: str = "",
     limit: int = 10,
 ) -> list[dict[str, Any]]:
-
-    limit = max(
-        1,
-        min(int(limit), 100),
-    )
-
+    limit = max(1, min(int(limit), 100))
     query = str(query or "").strip()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         if not query:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1591,16 +1274,14 @@ async def search_articles(
                 ORDER BY
                     published DESC,
                     relevance_score DESC,
+                    citation_count DESC,
                     id DESC
                 LIMIT ?
                 """,
                 (limit,),
             )
-
         else:
-
             pattern = f"%{query}%"
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1614,9 +1295,11 @@ async def search_articles(
                     OR journal LIKE ?
                     OR topic LIKE ?
                     OR keywords LIKE ?
+                    OR source LIKE ?
                 ORDER BY
                     relevance_score DESC,
                     published DESC,
+                    citation_count DESC,
                     id DESC
                 LIMIT ?
                 """,
@@ -1629,31 +1312,30 @@ async def search_articles(
                     pattern,
                     pattern,
                     pattern,
+                    pattern,
                     limit,
                 ),
             )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
+async def get_articles(
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    return await search_articles(
+        query="",
+        limit=limit,
+    )
 # ============================================================
-# Bookmarks / Saved articles
+# BOOKMARKS
 # ============================================================
-
 async def save_article(
     user_id: int,
     article_id: int,
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT id
@@ -1667,14 +1349,11 @@ async def save_article(
                 article_id,
             ),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         if row:
             return int(row["id"])
-
-        article_cursor = await db.execute(
+        cursor = await db.execute(
             """
             SELECT title
             FROM articles
@@ -1682,16 +1361,13 @@ async def save_article(
             """,
             (article_id,),
         )
-
-        article_row = await article_cursor.fetchone()
-        await article_cursor.close()
-
+        article_row = await cursor.fetchone()
+        await cursor.close()
         title = (
             article_row["title"]
             if article_row
             else ""
         )
-
         cursor = await db.execute(
             """
             INSERT INTO bookmarks (
@@ -1710,14 +1386,9 @@ async def save_article(
                 now,
             ),
         )
-
         bookmark_id = cursor.lastrowid
-
         await db.commit()
-
         return int(bookmark_id)
-
-
 async def save_bookmark(
     user_id: int,
     article_id: int | None = None,
@@ -1725,13 +1396,9 @@ async def save_bookmark(
     title: str = "",
     item_type: str = "article",
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             INSERT INTO bookmarks (
@@ -1753,23 +1420,15 @@ async def save_bookmark(
                 now,
             ),
         )
-
         bookmark_id = cursor.lastrowid
-
         await db.commit()
-
         return int(bookmark_id)
-
-
 async def delete_bookmark(
     user_id: int,
     bookmark_id: int,
 ) -> bool:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             DELETE FROM bookmarks
@@ -1781,25 +1440,16 @@ async def delete_bookmark(
                 user_id,
             ),
         )
-
         deleted = cursor.rowcount > 0
-
         await db.commit()
-
         return deleted
-
-
 async def get_bookmarks(
     user_id: int,
     item_type: str | None = None,
 ) -> list[dict[str, Any]]:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         if item_type:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1813,9 +1463,7 @@ async def get_bookmarks(
                     item_type,
                 ),
             )
-
         else:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1825,17 +1473,12 @@ async def get_bookmarks(
                 """,
                 (user_id,),
             )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 # ============================================================
-# Progress
+# PROGRESS
 # ============================================================
-
 async def save_progress(
     user_id: int,
     module_id: int | None = None,
@@ -1846,13 +1489,9 @@ async def save_progress(
     study_seconds: int = 0,
     last_position: int = 0,
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT id
@@ -1868,14 +1507,10 @@ async def save_progress(
                 lesson_id,
             ),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         if row:
-
             progress_id = int(row["id"])
-
             await db.execute(
                 """
                 UPDATE progress
@@ -1900,9 +1535,7 @@ async def save_progress(
                     progress_id,
                 ),
             )
-
         else:
-
             cursor = await db.execute(
                 """
                 INSERT INTO progress (
@@ -1934,26 +1567,17 @@ async def save_progress(
                     now,
                 ),
             )
-
             progress_id = cursor.lastrowid
-
         await db.commit()
-
         return int(progress_id)
-
-
 async def get_progress(
     user_id: int,
     module_id: int | None = None,
     lesson_id: int | None = None,
 ) -> list[dict[str, Any]]:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         if lesson_id is not None:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1967,9 +1591,7 @@ async def get_progress(
                     lesson_id,
                 ),
             )
-
         elif module_id is not None:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1983,9 +1605,7 @@ async def get_progress(
                     module_id,
                 ),
             )
-
         else:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -1995,17 +1615,12 @@ async def get_progress(
                 """,
                 (user_id,),
             )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 # ============================================================
-# Quiz results
+# QUIZ
 # ============================================================
-
 async def save_quiz_result(
     user_id: int,
     total_questions: int,
@@ -2016,15 +1631,12 @@ async def save_quiz_result(
     lesson_id: int | None = None,
     duration_seconds: int = 0,
 ) -> int:
-
     if wrong_answers is None:
         wrong_answers = max(
             0,
             total_questions - correct_answers,
         )
-
     if score is None:
-
         if total_questions > 0:
             score = (
                 correct_answers
@@ -2033,13 +1645,9 @@ async def save_quiz_result(
             )
         else:
             score = 0
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             INSERT INTO quiz_results (
@@ -2067,28 +1675,16 @@ async def save_quiz_result(
                 now,
             ),
         )
-
         result_id = cursor.lastrowid
-
         await db.commit()
-
         return int(result_id)
-
-
 async def get_quiz_results(
     user_id: int,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-
-    limit = max(
-        1,
-        min(int(limit), 500),
-    )
-
+    limit = max(1, min(int(limit), 500))
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT *
@@ -2102,17 +1698,12 @@ async def get_quiz_results(
                 limit,
             ),
         )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 # ============================================================
-# Flashcards
+# FLASHCARDS
 # ============================================================
-
 async def add_flashcard(
     front: str,
     back: str,
@@ -2122,13 +1713,9 @@ async def add_flashcard(
     difficulty: str = "medium",
     next_review_at: str | None = None,
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             INSERT INTO flashcards (
@@ -2156,54 +1743,32 @@ async def add_flashcard(
                 now,
             ),
         )
-
         flashcard_id = cursor.lastrowid
-
         await db.commit()
-
         return int(flashcard_id)
-
-
 async def get_flashcards(
     user_id: int | None = None,
     module_id: int | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-
-    limit = max(
-        1,
-        min(int(limit), 500),
-    )
-
+    limit = max(1, min(int(limit), 500))
     async with get_db() as db:
-
         await configure_database(db)
-
-        conditions = []
+        conditions: list[str] = []
         params: list[Any] = []
-
         if user_id is not None:
-            conditions.append(
-                "user_id = ?"
-            )
+            conditions.append("user_id = ?")
             params.append(user_id)
-
         if module_id is not None:
-            conditions.append(
-                "module_id = ?"
-            )
+            conditions.append("module_id = ?")
             params.append(module_id)
-
         where_clause = ""
-
         if conditions:
             where_clause = (
                 "WHERE "
                 + " AND ".join(conditions)
             )
-
         params.append(limit)
-
         cursor = await db.execute(
             f"""
             SELECT *
@@ -2217,17 +1782,12 @@ async def get_flashcards(
             """,
             tuple(params),
         )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 # ============================================================
-# Study plans
+# STUDY PLANS
 # ============================================================
-
 async def add_study_plan(
     user_id: int,
     title: str,
@@ -2239,13 +1799,9 @@ async def add_study_plan(
     lesson_id: int | None = None,
     status: str = "planned",
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             INSERT INTO study_plans (
@@ -2277,25 +1833,16 @@ async def add_study_plan(
                 now,
             ),
         )
-
         plan_id = cursor.lastrowid
-
         await db.commit()
-
         return int(plan_id)
-
-
 async def get_study_plans(
     user_id: int,
     plan_date: str | None = None,
 ) -> list[dict[str, Any]]:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         if plan_date:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -2309,9 +1856,7 @@ async def get_study_plans(
                     plan_date,
                 ),
             )
-
         else:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -2324,35 +1869,25 @@ async def get_study_plans(
                 """,
                 (user_id,),
             )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 # ============================================================
-# Settings
+# SETTINGS
 # ============================================================
-
 async def set_setting(
     user_id: int | None,
     key: str,
     value: Any,
 ) -> None:
-
     now = utc_now()
-
     if not isinstance(value, str):
         value = json.dumps(
             value,
             ensure_ascii=False,
         )
-
     async with get_db() as db:
-
         await configure_database(db)
-
         await db.execute(
             """
             INSERT INTO settings (
@@ -2376,20 +1911,14 @@ async def set_setting(
                 now,
             ),
         )
-
         await db.commit()
-
-
 async def get_setting(
     user_id: int | None,
     key: str,
     default: Any = None,
 ) -> Any:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT value
@@ -2403,28 +1932,18 @@ async def get_setting(
                 key,
             ),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         if not row:
             return default
-
         value = row["value"]
-
-        if not isinstance(value, str):
-            return value
-
         try:
             return json.loads(value)
         except Exception:
             return value
-
-
 # ============================================================
-# Files
+# FILES
 # ============================================================
-
 async def save_file(
     user_id: int,
     file_name: str,
@@ -2435,13 +1954,9 @@ async def save_file(
     description: str = "",
     telegram_file_id: str | None = None,
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             INSERT INTO files (
@@ -2469,25 +1984,16 @@ async def save_file(
                 now,
             ),
         )
-
         file_id = cursor.lastrowid
-
         await db.commit()
-
         return int(file_id)
-
-
 async def get_files(
     user_id: int,
     category: str | None = None,
 ) -> list[dict[str, Any]]:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         if category:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -2501,9 +2007,7 @@ async def get_files(
                     category,
                 ),
             )
-
         else:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -2513,30 +2017,21 @@ async def get_files(
                 """,
                 (user_id,),
             )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 # ============================================================
-# Search history
+# SEARCH HISTORY
 # ============================================================
-
 async def save_search_history(
     user_id: int,
     query: str,
     search_type: str = "general",
     results_count: int = 0,
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             INSERT INTO search_history (
@@ -2556,30 +2051,20 @@ async def save_search_history(
                 now,
             ),
         )
-
         history_id = cursor.lastrowid
-
         await db.commit()
-
         return int(history_id)
-
-
 # ============================================================
-# Weak topics
+# WEAK TOPICS
 # ============================================================
-
 async def update_weak_topic(
     user_id: int,
     topic: str,
     correct: bool,
 ) -> dict[str, Any] | None:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT *
@@ -2593,36 +2078,31 @@ async def update_weak_topic(
                 topic,
             ),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         if row:
-
             wrong_count = int(
-                row["wrong_count"]
+                row["wrong_count"] or 0
             )
-
             correct_count = int(
-                row["correct_count"]
+                row["correct_count"] or 0
             )
-
             if correct:
                 correct_count += 1
             else:
                 wrong_count += 1
-
             total = (
                 correct_count
                 + wrong_count
             )
-
             weakness_score = (
-                wrong_count / total * 100
+                wrong_count
+                / total
+                * 100
                 if total
                 else 0
             )
-
+            topic_id = int(row["id"])
             await db.execute(
                 """
                 UPDATE weak_topics
@@ -2638,28 +2118,17 @@ async def update_weak_topic(
                     correct_count,
                     weakness_score,
                     now,
-                    row["id"],
+                    topic_id,
                 ),
             )
-
-            topic_id = row["id"]
-
         else:
-
-            wrong_count = (
-                0 if correct else 1
-            )
-
-            correct_count = (
-                1 if correct else 0
-            )
-
+            wrong_count = 0 if correct else 1
+            correct_count = 1 if correct else 0
             weakness_score = (
                 wrong_count * 100
                 if wrong_count
                 else 0
             )
-
             cursor = await db.execute(
                 """
                 INSERT INTO weak_topics (
@@ -2681,11 +2150,8 @@ async def update_weak_topic(
                     now,
                 ),
             )
-
             topic_id = cursor.lastrowid
-
         await db.commit()
-
         cursor = await db.execute(
             """
             SELECT *
@@ -2694,27 +2160,16 @@ async def update_weak_topic(
             """,
             (topic_id,),
         )
-
         result = await cursor.fetchone()
         await cursor.close()
-
         return row_to_dict(result)
-
-
 async def get_weak_topics(
     user_id: int,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
-
-    limit = max(
-        1,
-        min(int(limit), 100),
-    )
-
+    limit = max(1, min(int(limit), 100))
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             SELECT *
@@ -2730,17 +2185,12 @@ async def get_weak_topics(
                 limit,
             ),
         )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 # ============================================================
-# Notifications
+# NOTIFICATIONS
 # ============================================================
-
 async def add_notification(
     user_id: int,
     title: str,
@@ -2748,13 +2198,9 @@ async def add_notification(
     notification_type: str = "general",
     scheduled_at: str | None = None,
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             INSERT INTO notifications (
@@ -2777,24 +2223,15 @@ async def add_notification(
                 now,
             ),
         )
-
         notification_id = cursor.lastrowid
-
         await db.commit()
-
         return int(notification_id)
-
-
 async def get_pending_notifications(
     user_id: int | None = None,
 ) -> list[dict[str, Any]]:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         if user_id is None:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -2805,9 +2242,7 @@ async def get_pending_notifications(
                     id ASC
                 """
             )
-
         else:
-
             cursor = await db.execute(
                 """
                 SELECT *
@@ -2820,23 +2255,15 @@ async def get_pending_notifications(
                 """,
                 (user_id,),
             )
-
         rows = await cursor.fetchall()
         await cursor.close()
-
         return rows_to_dicts(rows)
-
-
 async def mark_notification_sent(
     notification_id: int,
 ) -> bool:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             UPDATE notifications
@@ -2850,31 +2277,21 @@ async def mark_notification_sent(
                 notification_id,
             ),
         )
-
         updated = cursor.rowcount > 0
-
         await db.commit()
-
         return updated
-
-
 # ============================================================
-# Scientific sources
+# SOURCES
 # ============================================================
-
 async def register_source(
     name: str,
     source_type: str = "scientific",
     base_url: str = "",
     api_url: str = "",
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         await db.execute(
             """
             INSERT INTO sources (
@@ -2904,9 +2321,7 @@ async def register_source(
                 now,
             ),
         )
-
         await db.commit()
-
         cursor = await db.execute(
             """
             SELECT id
@@ -2915,29 +2330,34 @@ async def register_source(
             """,
             (name,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         return int(row["id"]) if row else 0
-
-
+async def get_sources() -> list[dict[str, Any]]:
+    async with get_db() as db:
+        await configure_database(db)
+        cursor = await db.execute(
+            """
+            SELECT *
+            FROM sources
+            WHERE is_active = 1
+            ORDER BY name ASC
+            """
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return rows_to_dicts(rows)
 # ============================================================
-# Article topics
+# ARTICLE TOPICS
 # ============================================================
-
 async def add_article_topic(
     article_id: int,
     topic_key: str,
     topic_title: str = "",
 ) -> int:
-
     now = utc_now()
-
     async with get_db() as db:
-
         await configure_database(db)
-
         await db.execute(
             """
             INSERT INTO article_topics (
@@ -2958,9 +2378,7 @@ async def add_article_topic(
                 now,
             ),
         )
-
         await db.commit()
-
         cursor = await db.execute(
             """
             SELECT id
@@ -2973,31 +2391,19 @@ async def add_article_topic(
                 topic_key,
             ),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
         return int(row["id"]) if row else 0
-
-
 # ============================================================
-# Statistics
+# STATISTICS
 # ============================================================
-
 async def get_user_statistics(
     user_id: int,
 ) -> dict[str, Any]:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         statistics: dict[str, Any] = {}
-
-        # ----------------------------------------------------
         # Progress
-        # ----------------------------------------------------
-
         cursor = await db.execute(
             """
             SELECT
@@ -3015,29 +2421,21 @@ async def get_user_statistics(
             """,
             (user_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
-        if row:
-            statistics["progress_count"] = int(
-                row["count"] or 0
-            )
-            statistics["study_seconds"] = int(
-                row["study_seconds"] or 0
-            )
-            statistics["average_completion"] = float(
-                row["average_completion"] or 0
-            )
-        else:
-            statistics["progress_count"] = 0
-            statistics["study_seconds"] = 0
-            statistics["average_completion"] = 0
-
-        # ----------------------------------------------------
+        statistics["progress_count"] = (
+            int(row["count"] or 0)
+            if row else 0
+        )
+        statistics["study_seconds"] = (
+            int(row["study_seconds"] or 0)
+            if row else 0
+        )
+        statistics["average_completion"] = (
+            float(row["average_completion"] or 0)
+            if row else 0
+        )
         # Quiz
-        # ----------------------------------------------------
-
         cursor = await db.execute(
             """
             SELECT
@@ -3059,28 +2457,25 @@ async def get_user_statistics(
             """,
             (user_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
-        if row:
-            statistics["quiz_count"] = int(
-                row["quiz_count"] or 0
-            )
-            statistics["average_quiz_score"] = float(
-                row["average_score"] or 0
-            )
-            statistics["correct_answers"] = int(
-                row["correct_answers"] or 0
-            )
-            statistics["wrong_answers"] = int(
-                row["wrong_answers"] or 0
-            )
-
-        # ----------------------------------------------------
+        statistics["quiz_count"] = (
+            int(row["quiz_count"] or 0)
+            if row else 0
+        )
+        statistics["average_quiz_score"] = (
+            float(row["average_score"] or 0)
+            if row else 0
+        )
+        statistics["correct_answers"] = (
+            int(row["correct_answers"] or 0)
+            if row else 0
+        )
+        statistics["wrong_answers"] = (
+            int(row["wrong_answers"] or 0)
+            if row else 0
+        )
         # Bookmarks
-        # ----------------------------------------------------
-
         cursor = await db.execute(
             """
             SELECT COUNT(*) AS count
@@ -3089,18 +2484,13 @@ async def get_user_statistics(
             """,
             (user_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
-        statistics["bookmarks"] = int(
-            row["count"] or 0
-        ) if row else 0
-
-        # ----------------------------------------------------
+        statistics["bookmarks"] = (
+            int(row["count"] or 0)
+            if row else 0
+        )
         # Files
-        # ----------------------------------------------------
-
         cursor = await db.execute(
             """
             SELECT COUNT(*) AS count
@@ -3109,18 +2499,13 @@ async def get_user_statistics(
             """,
             (user_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
-        statistics["files"] = int(
-            row["count"] or 0
-        ) if row else 0
-
-        # ----------------------------------------------------
+        statistics["files"] = (
+            int(row["count"] or 0)
+            if row else 0
+        )
         # Flashcards
-        # ----------------------------------------------------
-
         cursor = await db.execute(
             """
             SELECT COUNT(*) AS count
@@ -3129,18 +2514,13 @@ async def get_user_statistics(
             """,
             (user_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
-        statistics["flashcards"] = int(
-            row["count"] or 0
-        ) if row else 0
-
-        # ----------------------------------------------------
+        statistics["flashcards"] = (
+            int(row["count"] or 0)
+            if row else 0
+        )
         # Study plans
-        # ----------------------------------------------------
-
         cursor = await db.execute(
             """
             SELECT COUNT(*) AS count
@@ -3149,39 +2529,21 @@ async def get_user_statistics(
             """,
             (user_id,),
         )
-
         row = await cursor.fetchone()
         await cursor.close()
-
-        statistics["study_plans"] = int(
-            row["count"] or 0
-        ) if row else 0
-
+        statistics["study_plans"] = (
+            int(row["count"] or 0)
+            if row else 0
+        )
         return statistics
-
-
 # ============================================================
-# Compatibility helpers
+# COMPATIBILITY
 # ============================================================
-
-async def get_articles(
-    limit: int = 20,
-) -> list[dict[str, Any]]:
-
-    return await search_articles(
-        query="",
-        limit=limit,
-    )
-
-
 async def delete_article(
     article_id: int,
 ) -> bool:
-
     async with get_db() as db:
-
         await configure_database(db)
-
         cursor = await db.execute(
             """
             DELETE FROM articles
@@ -3189,99 +2551,51 @@ async def delete_article(
             """,
             (article_id,),
         )
-
         deleted = cursor.rowcount > 0
-
         await db.commit()
-
         return deleted
-
-
-async def get_sources() -> list[dict[str, Any]]:
-
-    async with get_db() as db:
-
-        await configure_database(db)
-
-        cursor = await db.execute(
-            """
-            SELECT *
-            FROM sources
-            WHERE is_active = 1
-            ORDER BY name ASC
-            """
-        )
-
-        rows = await cursor.fetchall()
-        await cursor.close()
-
-        return rows_to_dicts(rows)
-
-
 # ============================================================
-# Database health check
+# HEALTH CHECK
 # ============================================================
-
 async def database_health_check() -> dict[str, Any]:
-
     try:
-
         async with get_db() as db:
-
             await configure_database(db)
-
             cursor = await db.execute(
                 """
-                SELECT
-                    name
+                SELECT name
                 FROM sqlite_master
                 WHERE type = 'table'
                 ORDER BY name
                 """
             )
-
             rows = await cursor.fetchall()
             await cursor.close()
-
             tables = [
                 row["name"]
                 for row in rows
             ]
-
             return {
                 "status": "ok",
-                "database": str(
-                    DATABASE_PATH
-                ),
+                "database": str(DATABASE_PATH),
                 "tables": len(tables),
                 "table_names": tables,
             }
-
     except Exception as exc:
-
         logger.exception(
             "Database health check failed."
         )
-
         return {
             "status": "error",
-            "database": str(
-                DATABASE_PATH
-            ),
+            "database": str(DATABASE_PATH),
             "error": str(exc),
         }
-
-
 # ============================================================
-# Local test
+# LOCAL TEST
 # ============================================================
-
 async def _test_database() -> None:
-
     await init_database()
-
     result = await database_health_check()
-
     print(
         json.dumps(
             result,
@@ -3289,12 +2603,8 @@ async def _test_database() -> None:
             indent=2,
         )
     )
-
-
 if __name__ == "__main__":
-
     import asyncio
-
     asyncio.run(
         _test_database()
     )
