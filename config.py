@@ -4,70 +4,49 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-# =========================================================
-# AliDaneshYarBot - Configuration
-# =========================================================
+# ============================================================
+# Environment
+# ============================================================
 
 load_dotenv()
 
 
-# ---------------------------------------------------------
-# Project paths
-# ---------------------------------------------------------
+# ============================================================
+# Base paths
+# ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
 
 DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 PDF_DIR = DATA_DIR / "pdfs"
-PDF_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
+PDF_DIR.mkdir(parents=True, exist_ok=True)
 
 FILES_DIR = DATA_DIR / "files"
-FILES_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
+FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ---------------------------------------------------------
-# Telegram Bot
-# ---------------------------------------------------------
+# ============================================================
+# Bot configuration
+# ============================================================
 
-BOT_TOKEN = os.getenv(
-    "BOT_TOKEN",
-    "",
-).strip()
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 
-
-# ---------------------------------------------------------
-# Private access
-# ---------------------------------------------------------
 
 def load_allowed_user_ids() -> set[int]:
     """
     Read Telegram user IDs from:
 
-        ALLOWED_USER_IDS=123456789,987654321
-
-    Only numeric IDs are accepted.
+    ALLOWED_USER_IDS=123456789,987654321
     """
 
-    raw = os.getenv(
-        "ALLOWED_USER_IDS",
-        "",
-    ).strip()
+    raw = os.getenv("ALLOWED_USER_IDS", "").strip()
 
-    user_ids: set[int] = set()
+    result: set[int] = set()
 
     if not raw:
-        return user_ids
+        return result
 
     for value in raw.split(","):
         value = value.strip()
@@ -76,57 +55,71 @@ def load_allowed_user_ids() -> set[int]:
             continue
 
         try:
-            user_ids.add(int(value))
+            result.add(int(value))
         except ValueError:
             continue
 
-    return user_ids
+    return result
 
 
 ALLOWED_USER_IDS = load_allowed_user_ids()
 
 
-# ---------------------------------------------------------
+# ============================================================
 # Database
-# ---------------------------------------------------------
+# ============================================================
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     f"sqlite+aiosqlite:///{DATA_DIR / 'bot.db'}",
 ).strip()
 
-
 DB_PATH = DATA_DIR / "bot.db"
 
 
-# ---------------------------------------------------------
-# Application
-# ---------------------------------------------------------
+# ============================================================
+# Application information
+# ============================================================
 
 APP_NAME = "AliDaneshYarBot"
 
 BOT_NAME = "علی دانش‌یار"
 
 BOT_DESCRIPTION = (
-    "دستیار شخصی پژوهش، آموزش و آمادگی آزمون"
+    "دستیار شخصی پژوهش، آموزش، تحقیق و آمادگی آزمون"
 )
 
 
-# ---------------------------------------------------------
-# Automatic scientific resource collector
-# ---------------------------------------------------------
+# ============================================================
+# Render / HTTP
+# ============================================================
+
+# Render automatically provides PORT.
+# Default Render Web Service port is 10000.
+
+try:
+    PORT = int(os.getenv("PORT", "10000"))
+except ValueError:
+    PORT = 10000
+
+if PORT <= 0:
+    PORT = 10000
+
+HOST = "0.0.0.0"
+
+HEALTH_PATH = "/health"
+
+
+# ============================================================
+# Auto update
+# ============================================================
 
 AUTO_UPDATE_ENABLED = (
     os.getenv(
         "AUTO_UPDATE_ENABLED",
         "true",
     ).strip().lower()
-    in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    in {"1", "true", "yes", "on"}
 )
 
 
@@ -164,9 +157,9 @@ AUTO_UPDATE_LIMIT = max(
 )
 
 
-# ---------------------------------------------------------
-# Scientific search
-# ---------------------------------------------------------
+# ============================================================
+# Scientific APIs
+# ============================================================
 
 CROSSREF_API_URL = (
     "https://api.crossref.org/works"
@@ -188,11 +181,12 @@ SCIENTIFIC_SOURCES = [
 ]
 
 
-# ---------------------------------------------------------
-# Topics monitored automatically
-# ---------------------------------------------------------
+# ============================================================
+# Research watch topics
+# ============================================================
 
 WATCH_TOPICS = {
+
     "management": {
         "title": "مدیریت و بازرگانی",
         "queries": [
@@ -305,44 +299,74 @@ WATCH_TOPICS = {
 }
 
 
-# ---------------------------------------------------------
+# ============================================================
 # Educational modules
-# ---------------------------------------------------------
+# ============================================================
 
 EDUCATIONAL_MODULES = {
+
     "management": "مدیریت و بازرگانی",
+
     "banking": "بانکداری",
+
     "finance": "مدیریت مالی",
+
     "accounting": "حسابداری",
+
     "marketing": "بازاریابی و فروش",
+
     "international_business": "تجارت بین‌الملل",
+
     "foundations": "دروس پایه مدیریت",
+
     "english": "زبان انگلیسی از صفر تا پیشرفته",
 }
 
 
-# ---------------------------------------------------------
+# ------------------------------------------------------------
+# Compatibility alias
+#
+# نسخه قبلی bot.py از TOPICS استفاده می‌کرد.
+# این alias باعث می‌شود اگر فایل دیگری هنوز TOPICS را import
+# کرده باشد، برنامه به خاطر این مورد متوقف نشود.
+# ------------------------------------------------------------
+
+TOPICS = EDUCATIONAL_MODULES
+
+
+# ============================================================
 # Employment exam modules
-# ---------------------------------------------------------
+# ============================================================
 
 EMPLOYMENT_MODULES = {
+
     "general": "دروس عمومی",
+
     "management": "تخصصی مدیریت",
+
     "public_management": "مدیریت دولتی",
+
     "business_management": "مدیریت بازرگانی",
+
     "accounting": "حسابداری",
+
     "economics": "اقتصاد",
+
     "banking": "بانکداری",
+
     "english": "زبان انگلیسی",
+
     "icdl": "فناوری اطلاعات و ICDL",
+
     "aptitude": "هوش و استعداد",
+
     "mathematics": "ریاضی و آمار",
 }
 
 
-# ---------------------------------------------------------
+# ============================================================
 # Logging
-# ---------------------------------------------------------
+# ============================================================
 
 LOG_LEVEL = os.getenv(
     "LOG_LEVEL",
@@ -350,20 +374,19 @@ LOG_LEVEL = os.getenv(
 ).upper()
 
 
-# ---------------------------------------------------------
+# ============================================================
 # Validation
-# ---------------------------------------------------------
+# ============================================================
 
 def validate_config() -> None:
     """
-    Validate the minimum configuration
-    required to start the bot.
+    Validate required environment variables.
     """
 
     if not BOT_TOKEN:
         raise RuntimeError(
             "BOT_TOKEN تنظیم نشده است. "
-            "آن را در Environment Variables رندر وارد کنید."
+            "آن را در Render > Environment Variables وارد کنید."
         )
 
     if not ALLOWED_USER_IDS:
@@ -373,34 +396,25 @@ def validate_config() -> None:
         )
 
 
-# ---------------------------------------------------------
-# Startup information
-# ---------------------------------------------------------
+# ============================================================
+# Config summary
+# ============================================================
 
 def get_config_summary() -> dict:
-    """
-    Safe configuration summary.
-
-    BOT_TOKEN is intentionally never returned.
-    """
-
     return {
         "app_name": APP_NAME,
         "bot_name": BOT_NAME,
         "database": "SQLite",
-        "private_access": bool(
-            ALLOWED_USER_IDS
-        ),
-        "allowed_users": len(
-            ALLOWED_USER_IDS
-        ),
+        "database_path": str(DB_PATH),
+        "private_access": bool(ALLOWED_USER_IDS),
+        "allowed_users": len(ALLOWED_USER_IDS),
+        "host": HOST,
+        "port": PORT,
+        "health_path": HEALTH_PATH,
         "auto_update": AUTO_UPDATE_ENABLED,
-        "update_interval_hours":
-            AUTO_UPDATE_INTERVAL_HOURS,
-        "update_limit":
-            AUTO_UPDATE_LIMIT,
-        "scientific_sources":
-            SCIENTIFIC_SOURCES,
-        "watched_topics":
-            len(WATCH_TOPICS),
+        "update_interval_hours": AUTO_UPDATE_INTERVAL_HOURS,
+        "update_limit": AUTO_UPDATE_LIMIT,
+        "scientific_sources": SCIENTIFIC_SOURCES,
+        "watched_topics": len(WATCH_TOPICS),
+        "educational_modules": len(EDUCATIONAL_MODULES),
     }
