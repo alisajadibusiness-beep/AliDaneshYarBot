@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import sys
 
 from aiogram import Bot, Dispatcher
@@ -7,9 +8,17 @@ from aiogram import Bot, Dispatcher
 from config import (
     BOT_TOKEN,
     ALLOWED_USER_IDS,
-    TOPICS,
+    EDUCATIONAL_MODULES,
+    PORT,
+    HOST,
+    validate_config,
+    get_config_summary,
 )
-from database import init_database, seed_modules
+
+from database import (
+    init_database,
+    seed_modules,
+)
 
 from handlers.start import router as start_router
 from handlers.search import router as search_router
@@ -23,72 +32,339 @@ from handlers.progress import router as progress_router
 from handlers.study_plan import router as study_plan_router
 from handlers.admin import router as admin_router
 
-from services.auto_updater import auto_update_loop
+from services.auto_updater import (
+    auto_update_loop,
+)
 
+from web.health_server import (
+    start_health_server,
+    stop_health_server,
+)
+
+
+# ============================================================
+# Logging
+# ============================================================
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+    format=(
+        "%(asctime)s | "
+        "%(levelname)s | "
+        "%(name)s | "
+        "%(message)s"
+    ),
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+    ],
 )
 
-logger = logging.getLogger("AliDaneshYarBot")
+logger = logging.getLogger(
+    "AliDaneshYarBot"
+)
 
+
+# ============================================================
+# Main application
+# ============================================================
 
 async def main() -> None:
-    if not BOT_TOKEN:
-        raise RuntimeError(
-            "BOT_TOKEN is not configured."
-        )
 
-    if not ALLOWED_USER_IDS:
-        raise RuntimeError(
-            "ALLOWED_USER_IDS is not configured."
-        )
+    # --------------------------------------------------------
+    # Validate configuration
+    # --------------------------------------------------------
 
-    logger.info("Starting AliDaneshYarBot...")
+    validate_config()
 
-    await init_database()
-    await seed_modules(TOPICS)
-
-    bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
-
-    dp.include_router(start_router)
-    dp.include_router(search_router)
-    dp.include_router(education_router)
-    dp.include_router(exams_router)
-    dp.include_router(articles_router)
-    dp.include_router(library_router)
-    dp.include_router(quiz_router)
-    dp.include_router(flashcards_router)
-    dp.include_router(progress_router)
-    dp.include_router(study_plan_router)
-    dp.include_router(admin_router)
-
-    updater_task = asyncio.create_task(
-        auto_update_loop(bot)
+    logger.info(
+        "Starting %s...",
+        get_config_summary()["app_name"],
     )
 
+    logger.info(
+        "Allowed users: %s",
+        len(ALLOWED_USER_IDS),
+    )
+
+    logger.info(
+        "HTTP server: %s:%s",
+        HOST,
+        PORT,
+    )
+
+
+    # --------------------------------------------------------
+    # Database
+    # --------------------------------------------------------
+
+    logger.info(
+        "Initializing database..."
+    )
+
+    await init_database()
+
+    logger.info(
+        "Database initialized."
+    )
+
+
+    # --------------------------------------------------------
+    # Seed educational modules
+    # --------------------------------------------------------
+
+    logger.info(
+        "Seeding educational modules..."
+    )
+
+    await seed_modules(
+        EDUCATIONAL_MODULES
+    )
+
+    logger.info(
+        "Educational modules initialized."
+    )
+
+
+    # --------------------------------------------------------
+    # Telegram Bot
+    # --------------------------------------------------------
+
+    bot = Bot(
+        token=BOT_TOKEN,
+    )
+
+    dp = Dispatcher()
+
+
+    # --------------------------------------------------------
+    # Register routers
+    # --------------------------------------------------------
+
+    dp.include_router(
+        start_router
+    )
+
+    dp.include_router(
+        search_router
+    )
+
+    dp.include_router(
+        education_router
+    )
+
+    dp.include_router(
+        exams_router
+    )
+
+    dp.include_router(
+        articles_router
+    )
+
+    dp.include_router(
+        library_router
+    )
+
+    dp.include_router(
+        quiz_router
+    )
+
+    dp.include_router(
+        flashcards_router
+    )
+
+    dp.include_router(
+        progress_router
+    )
+
+    dp.include_router(
+        study_plan_router
+    )
+
+    dp.include_router(
+        admin_router
+    )
+
+
+    # --------------------------------------------------------
+    # Start HTTP server for Render
+    # --------------------------------------------------------
+
+    health_runner = None
+
     try:
-        await dp.start_polling(
-            bot,
-            allowed_updates=dp.resolve_used_update_types(),
+
+        health_runner = await start_health_server(
+            host=HOST,
+            port=PORT,
         )
 
-    finally:
-        updater_task.cancel()
+        logger.info(
+            "Render HTTP server is ready."
+        )
+
+        logger.info(
+            "Health endpoint: /health"
+        )
+
+
+        # ----------------------------------------------------
+        # Remove previous Telegram webhook
+        # ----------------------------------------------------
 
         try:
-            await updater_task
-        except asyncio.CancelledError:
-            pass
 
-        await bot.session.close()
+            await bot.delete_webhook(
+                drop_pending_updates=True
+            )
 
+            logger.info(
+                "Telegram webhook removed. "
+                "Polling mode is ready."
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Could not delete Telegram webhook."
+            )
+
+
+        # ----------------------------------------------------
+        # Start automatic research updater
+        # ----------------------------------------------------
+
+        updater_task = asyncio.create_task(
+            auto_update_loop(bot)
+        )
+
+        logger.info(
+            "Automatic research updater started."
+        )
+
+
+        # ----------------------------------------------------
+        # Start Telegram polling
+        # ----------------------------------------------------
+
+        logger.info(
+            "Starting Telegram polling..."
+        )
+
+        await dp.start_polling(
+            bot,
+            allowed_updates=(
+                dp.resolve_used_update_types()
+            ),
+        )
+
+
+    except asyncio.CancelledError:
+
+        logger.info(
+            "Main application cancelled."
+        )
+
+        raise
+
+
+    except Exception:
+
+        logger.exception(
+            "Fatal application error."
+        )
+
+        raise
+
+
+    finally:
+
+        # ----------------------------------------------------
+        # Stop updater
+        # ----------------------------------------------------
+
+        try:
+
+            if (
+                "updater_task" in locals()
+                and updater_task
+            ):
+
+                updater_task.cancel()
+
+                try:
+
+                    await updater_task
+
+                except asyncio.CancelledError:
+
+                    pass
+
+        except Exception:
+
+            logger.exception(
+                "Error while stopping updater."
+            )
+
+
+        # ----------------------------------------------------
+        # Stop HTTP server
+        # ----------------------------------------------------
+
+        try:
+
+            await stop_health_server(
+                health_runner
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Error while stopping health server."
+            )
+
+
+        # ----------------------------------------------------
+        # Close Telegram session
+        # ----------------------------------------------------
+
+        try:
+
+            await bot.session.close()
+
+        except Exception:
+
+            logger.exception(
+                "Error while closing Telegram session."
+            )
+
+
+        logger.info(
+            "AliDaneshYarBot stopped."
+        )
+
+
+# ============================================================
+# Entry point
+# ============================================================
 
 if __name__ == "__main__":
+
     try:
-        asyncio.run(main())
+
+        asyncio.run(
+            main()
+        )
+
     except KeyboardInterrupt:
-        logger.info("Bot stopped.")
+
+        logger.info(
+            "Bot stopped by keyboard interrupt."
+        )
+
+    except Exception:
+
+        logger.exception(
+            "Application exited with an error."
+        )
+
+        sys.exit(1)
