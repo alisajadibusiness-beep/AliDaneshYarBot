@@ -1,9 +1,43 @@
+"""
+AliDaneshYarBot
+دستیار شخصی پژوهش، آموزش، تحقیق و آمادگی آزمون
+
+ویژگی‌های اصلی:
+- دسترسی خصوصی با ALLOWED_USER_IDS
+- Telegram Bot با aiogram
+- SQLite
+- HTTP Health Server برای Render
+- Automatic Research Updater
+- ماژول‌های آموزش
+- جستجوی علمی
+- آزمون و فلش‌کارت
+- کتابخانه شخصی
+- برنامه مطالعه
+"""
+
 import asyncio
 import logging
-import os
 import sys
+from contextlib import suppress
+
+
+# ============================================================
+# STARTUP DIAGNOSTIC
+# ============================================================
+
+print(">>> ALIDANESHYAR BOT.PY STARTED <<<", flush=True)
+
+
+# ============================================================
+# AIROGRAM
+# ============================================================
 
 from aiogram import Bot, Dispatcher
+
+
+# ============================================================
+# CONFIG
+# ============================================================
 
 from config import (
     BOT_TOKEN,
@@ -15,10 +49,20 @@ from config import (
     get_config_summary,
 )
 
+
+# ============================================================
+# DATABASE
+# ============================================================
+
 from database import (
     init_database,
     seed_modules,
 )
+
+
+# ============================================================
+# HANDLERS
+# ============================================================
 
 from handlers.start import router as start_router
 from handlers.search import router as search_router
@@ -32,9 +76,19 @@ from handlers.progress import router as progress_router
 from handlers.study_plan import router as study_plan_router
 from handlers.admin import router as admin_router
 
+
+# ============================================================
+# SERVICES
+# ============================================================
+
 from services.auto_updater import (
     auto_update_loop,
 )
+
+
+# ============================================================
+# WEB / HEALTH
+# ============================================================
 
 from web.health_server import (
     start_health_server,
@@ -43,52 +97,66 @@ from web.health_server import (
 
 
 # ============================================================
-# Logging
+# LOGGING
 # ============================================================
 
 logging.basicConfig(
     level=logging.INFO,
-    format=(
-        "%(asctime)s | "
-        "%(levelname)s | "
-        "%(name)s | "
-        "%(message)s"
-    ),
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
     ],
+    force=True,
 )
 
-logger = logging.getLogger(
-    "AliDaneshYarBot"
-)
+logger = logging.getLogger("AliDaneshYarBot")
 
 
 # ============================================================
-# Main application
+# MAIN
 # ============================================================
 
 async def main() -> None:
 
+    print(">>> MAIN FUNCTION STARTED <<<", flush=True)
+
     # --------------------------------------------------------
-    # Validate configuration
+    # Configuration validation
     # --------------------------------------------------------
+
+    logger.info("Validating configuration...")
 
     validate_config()
 
+    config_summary = get_config_summary()
+
     logger.info(
-        "Starting %s...",
-        get_config_summary()["app_name"],
+        "Application: %s",
+        config_summary.get("app_name"),
+    )
+
+    logger.info(
+        "Bot name: %s",
+        config_summary.get("bot_name"),
     )
 
     logger.info(
         "Allowed users: %s",
-        len(ALLOWED_USER_IDS),
+        config_summary.get("allowed_users"),
     )
 
     logger.info(
-        "HTTP server: %s:%s",
+        "Private access: %s",
+        config_summary.get("private_access"),
+    )
+
+    logger.info(
+        "Host: %s",
         HOST,
+    )
+
+    logger.info(
+        "Port: %s",
         PORT,
     )
 
@@ -97,23 +165,20 @@ async def main() -> None:
     # Database
     # --------------------------------------------------------
 
-    logger.info(
-        "Initializing database..."
-    )
+    logger.info("Initializing database...")
 
     await init_database()
 
-    logger.info(
-        "Database initialized."
-    )
+    logger.info("Database initialized successfully.")
 
 
     # --------------------------------------------------------
-    # Seed educational modules
+    # Educational modules
     # --------------------------------------------------------
 
     logger.info(
-        "Seeding educational modules..."
+        "Initializing %s educational modules...",
+        len(EDUCATIONAL_MODULES),
     )
 
     await seed_modules(
@@ -121,7 +186,7 @@ async def main() -> None:
     )
 
     logger.info(
-        "Educational modules initialized."
+        "Educational modules initialized successfully."
     )
 
 
@@ -129,69 +194,59 @@ async def main() -> None:
     # Telegram Bot
     # --------------------------------------------------------
 
+    logger.info("Creating Telegram Bot instance...")
+
     bot = Bot(
         token=BOT_TOKEN,
     )
 
     dp = Dispatcher()
 
+    logger.info("Telegram Dispatcher created.")
+
 
     # --------------------------------------------------------
     # Register routers
     # --------------------------------------------------------
 
-    dp.include_router(
-        start_router
-    )
+    logger.info("Registering handlers...")
 
-    dp.include_router(
-        search_router
-    )
+    dp.include_router(start_router)
+    dp.include_router(search_router)
+    dp.include_router(education_router)
+    dp.include_router(exams_router)
+    dp.include_router(articles_router)
+    dp.include_router(library_router)
+    dp.include_router(quiz_router)
+    dp.include_router(flashcards_router)
+    dp.include_router(progress_router)
+    dp.include_router(study_plan_router)
+    dp.include_router(admin_router)
 
-    dp.include_router(
-        education_router
-    )
-
-    dp.include_router(
-        exams_router
-    )
-
-    dp.include_router(
-        articles_router
-    )
-
-    dp.include_router(
-        library_router
-    )
-
-    dp.include_router(
-        quiz_router
-    )
-
-    dp.include_router(
-        flashcards_router
-    )
-
-    dp.include_router(
-        progress_router
-    )
-
-    dp.include_router(
-        study_plan_router
-    )
-
-    dp.include_router(
-        admin_router
+    logger.info(
+        "All Telegram handlers registered successfully."
     )
 
 
     # --------------------------------------------------------
-    # Start HTTP server for Render
+    # Health server
     # --------------------------------------------------------
 
     health_runner = None
 
+    # --------------------------------------------------------
+    # Auto updater task
+    # --------------------------------------------------------
+
+    updater_task = None
+
     try:
+
+        logger.info(
+            "Starting HTTP health server on %s:%s...",
+            HOST,
+            PORT,
+        )
 
         health_runner = await start_health_server(
             host=HOST,
@@ -199,39 +254,47 @@ async def main() -> None:
         )
 
         logger.info(
-            "Render HTTP server is ready."
+            "HTTP health server started successfully."
         )
 
         logger.info(
-            "Health endpoint: /health"
+            "Health endpoint: http://0.0.0.0:%s/health",
+            PORT,
         )
 
 
         # ----------------------------------------------------
-        # Remove previous Telegram webhook
+        # Telegram webhook
         # ----------------------------------------------------
+
+        logger.info(
+            "Removing existing Telegram webhook..."
+        )
 
         try:
 
             await bot.delete_webhook(
-                drop_pending_updates=True
+                drop_pending_updates=True,
             )
 
             logger.info(
-                "Telegram webhook removed. "
-                "Polling mode is ready."
+                "Telegram webhook removed successfully."
             )
 
         except Exception:
 
             logger.exception(
-                "Could not delete Telegram webhook."
+                "Could not remove Telegram webhook."
             )
 
 
         # ----------------------------------------------------
-        # Start automatic research updater
+        # Automatic research updater
         # ----------------------------------------------------
+
+        logger.info(
+            "Starting automatic research updater..."
+        )
 
         updater_task = asyncio.create_task(
             auto_update_loop(bot)
@@ -243,18 +306,20 @@ async def main() -> None:
 
 
         # ----------------------------------------------------
-        # Start Telegram polling
+        # Telegram polling
         # ----------------------------------------------------
 
         logger.info(
-            "Starting Telegram polling..."
+            "Preparing Telegram polling..."
+        )
+
+        logger.info(
+            ">>> TELEGRAM POLLING STARTING <<<"
         )
 
         await dp.start_polling(
             bot,
-            allowed_updates=(
-                dp.resolve_used_update_types()
-            ),
+            allowed_updates=dp.resolve_used_update_types(),
         )
 
 
@@ -270,7 +335,7 @@ async def main() -> None:
     except Exception:
 
         logger.exception(
-            "Fatal application error."
+            "FATAL APPLICATION ERROR"
         )
 
         raise
@@ -279,63 +344,52 @@ async def main() -> None:
     finally:
 
         # ----------------------------------------------------
-        # Stop updater
+        # Stop automatic updater
         # ----------------------------------------------------
 
-        try:
+        if updater_task is not None:
 
-            if (
-                "updater_task" in locals()
-                and updater_task
-            ):
-
-                updater_task.cancel()
-
-                try:
-
-                    await updater_task
-
-                except asyncio.CancelledError:
-
-                    pass
-
-        except Exception:
-
-            logger.exception(
-                "Error while stopping updater."
+            logger.info(
+                "Stopping automatic research updater..."
             )
+
+            updater_task.cancel()
+
+            with suppress(
+                asyncio.CancelledError,
+                Exception,
+            ):
+                await updater_task
 
 
         # ----------------------------------------------------
         # Stop HTTP server
         # ----------------------------------------------------
 
-        try:
+        if health_runner is not None:
 
-            await stop_health_server(
-                health_runner
+            logger.info(
+                "Stopping HTTP health server..."
             )
 
-        except Exception:
+            with suppress(Exception):
 
-            logger.exception(
-                "Error while stopping health server."
-            )
+                await stop_health_server(
+                    health_runner
+                )
 
 
         # ----------------------------------------------------
         # Close Telegram session
         # ----------------------------------------------------
 
-        try:
+        logger.info(
+            "Closing Telegram Bot session..."
+        )
+
+        with suppress(Exception):
 
             await bot.session.close()
-
-        except Exception:
-
-            logger.exception(
-                "Error while closing Telegram session."
-            )
 
 
         logger.info(
@@ -344,10 +398,14 @@ async def main() -> None:
 
 
 # ============================================================
-# Entry point
+# ENTRY POINT
 # ============================================================
 
 if __name__ == "__main__":
+
+    logger.info(
+        "Python entry point detected."
+    )
 
     try:
 
