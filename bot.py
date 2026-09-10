@@ -1,24 +1,14 @@
 """
 Ali DaneshYar Bot
 دستیار شخصی پژوهش، آموزش، تحقیق و آمادگی آزمون
-ویژگی‌های اصلی:
-- Telegram Bot با aiogram 3
-- دسترسی خصوصی بر اساس ALLOWED_USER_IDS
-- SQLite + aiosqlite
-- ماژول‌های آموزشی
-- آزمون‌های استخدامی
-- مقالات و منابع علمی
-- جستجوی هوشمند
-- کتابخانه شخصی
-- فلش‌کارت
-- آزمون و ثبت پیشرفت
-- برنامه مطالعه
-- Auto Updater
-- HTTP Health Server برای Render / UptimeRobot
-نکته:
-ترتیب Routerها مهم است.
-Router آموزش قبل از Router منوی اصلی ثبت می‌شود تا
-هندلرهای تخصصی آموزش توسط fallbackهای عمومی گرفته نشوند.
+Architecture:
+- aiogram 3
+- SQLite / aiosqlite
+- Private Telegram access
+- Educational content initializer
+- Scientific auto updater
+- HTTP health server
+- Render / UptimeRobot compatible
 """
 import asyncio
 import logging
@@ -29,17 +19,17 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from config import (
     ALLOWED_USER_IDS,
+    AUTO_UPDATE_ENABLED,
     BOT_NAME,
     BOT_TOKEN,
     HOST,
     PORT,
-    AUTO_UPDATE_ENABLED,
     validate_config,
 )
 from database import (
+    database_health_check,
     init_database,
     seed_modules,
-    database_health_check,
 )
 from handlers.start import router as start_router
 from handlers.education import router as education_router
@@ -53,6 +43,7 @@ from handlers.progress import router as progress_router
 from handlers.study_plan import router as study_plan_router
 from handlers.admin import router as admin_router
 from services.auto_updater import auto_update_loop
+from services.content_initializer import initialize_content
 from web.health_server import (
     start_health_server,
     stop_health_server,
@@ -62,14 +53,19 @@ from web.health_server import (
 # ============================================================
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    format=(
+        "%(asctime)s | "
+        "%(levelname)s | "
+        "%(name)s | "
+        "%(message)s"
+    ),
     handlers=[
         logging.StreamHandler(sys.stdout),
     ],
 )
 logger = logging.getLogger("AliDaneshYarBot")
 # ============================================================
-# GLOBAL STATE
+# GLOBAL TASKS
 # ============================================================
 health_runner = None
 auto_update_task = None
@@ -78,15 +74,7 @@ auto_update_task = None
 # ============================================================
 async def startup() -> tuple[Bot, Dispatcher]:
     """
-    آماده‌سازی کامل ربات:
-    1. اعتبارسنجی تنظیمات
-    2. ساخت دیتابیس
-    3. Seed ماژول‌ها
-    4. ساخت Bot و Dispatcher
-    5. ثبت Routerها
-    6. راه‌اندازی Health Server
-    7. حذف Webhook قبلی
-    8. راه‌اندازی Auto Updater
+    آماده‌سازی کامل ربات.
     """
     global health_runner
     global auto_update_task
@@ -102,40 +90,62 @@ async def startup() -> tuple[Bot, Dispatcher]:
         "Configuration validated successfully."
     )
     logger.info(
-        "Private allowed users: %s",
+        "Allowed private users: %s",
         len(ALLOWED_USER_IDS),
     )
     # --------------------------------------------------------
     # 2. Initialize database
     # --------------------------------------------------------
-    logger.info("Initializing database...")
+    logger.info(
+        "Initializing database..."
+    )
     await init_database()
     logger.info(
         "Database initialized successfully."
     )
     # --------------------------------------------------------
-    # 3. Seed educational modules
+    # 3. Seed modules
     # --------------------------------------------------------
-    logger.info("Seeding educational modules...")
+    logger.info(
+        "Seeding base modules..."
+    )
     await seed_modules()
     logger.info(
-        "Educational modules seeded successfully."
+        "Base modules seeded successfully."
     )
     # --------------------------------------------------------
-    # 4. Database health check
+    # 4. Import educational content
+    # --------------------------------------------------------
+    logger.info(
+        "Initializing educational content..."
+    )
+    try:
+        content_result = await initialize_content()
+        logger.info(
+            "Educational content initialization completed: %s",
+            content_result,
+        )
+    except Exception:
+        logger.exception(
+            "Educational content initialization failed."
+        )
+        # محتوای آموزشی نباید باعث شود کل ربات از کار بیفتد.
+        # بنابراین خطا ثبت می‌شود و ربات ادامه می‌دهد.
+    # --------------------------------------------------------
+    # 5. Database health check
     # --------------------------------------------------------
     try:
-        db_health = await database_health_check()
+        health = await database_health_check()
         logger.info(
-            "Database health check: %s",
-            db_health,
+            "Database health: %s",
+            health,
         )
     except Exception:
         logger.exception(
             "Database health check failed."
         )
     # --------------------------------------------------------
-    # 5. Create Telegram Bot
+    # 6. Create Bot
     # --------------------------------------------------------
     bot = Bot(
         token=BOT_TOKEN,
@@ -145,30 +155,16 @@ async def startup() -> tuple[Bot, Dispatcher]:
     )
     dp = Dispatcher()
     # --------------------------------------------------------
-    # 6. Register Routers
+    # 7. Register routers
     # --------------------------------------------------------
     #
-    # ترتیب بسیار مهم است.
+    # ترتیب مهم است.
     #
-    # education_router باید قبل از start_router باشد،
-    # چون start.py شامل بعضی هندلرهای منوی عمومی و fallback است.
-    #
-    # ترتیب فعلی:
-    #
-    # 1. Education
-    # 2. Start / Main Menu
-    # 3. Search
-    # 4. Articles
-    # 5. Exams
-    # 6. Library
-    # 7. Quiz
-    # 8. Flashcards
-    # 9. Progress
-    # 10. Study Plan
-    # 11. Admin
-    #
+    # آموزش باید قبل از منوی عمومی ثبت شود.
     # --------------------------------------------------------
-    logger.info("Registering routers...")
+    logger.info(
+        "Registering routers..."
+    )
     dp.include_router(education_router)
     dp.include_router(start_router)
     dp.include_router(search_router)
@@ -181,13 +177,13 @@ async def startup() -> tuple[Bot, Dispatcher]:
     dp.include_router(study_plan_router)
     dp.include_router(admin_router)
     logger.info(
-        "All routers registered successfully."
+        "All routers registered."
     )
     # --------------------------------------------------------
-    # 7. Start HTTP Health Server
+    # 8. Start HTTP health server
     # --------------------------------------------------------
     logger.info(
-        "Starting HTTP health server on %s:%s",
+        "Starting HTTP server on %s:%s",
         HOST,
         PORT,
     )
@@ -197,57 +193,55 @@ async def startup() -> tuple[Bot, Dispatcher]:
             port=PORT,
         )
         logger.info(
-            "Health server started successfully."
+            "HTTP health server started."
         )
     except Exception:
         logger.exception(
             "Failed to start HTTP health server."
         )
-        # اگر Health Server بالا نیاید،
-        # ربات Telegram همچنان می‌تواند اجرا شود.
         health_runner = None
     # --------------------------------------------------------
-    # 8. Delete previous webhook
+    # 9. Delete previous webhook
     # --------------------------------------------------------
     logger.info(
-        "Removing previous Telegram webhook..."
+        "Deleting previous Telegram webhook..."
     )
     try:
         await bot.delete_webhook(
             drop_pending_updates=True
         )
         logger.info(
-            "Previous webhook removed successfully."
+            "Previous webhook deleted."
         )
     except Exception:
         logger.exception(
-            "Failed to remove previous webhook."
+            "Failed to delete Telegram webhook."
         )
     # --------------------------------------------------------
-    # 9. Start Auto Updater
+    # 10. Start automatic updater
     # --------------------------------------------------------
     if AUTO_UPDATE_ENABLED:
         logger.info(
-            "Starting automatic scientific resource updater..."
+            "Starting scientific auto updater..."
         )
         try:
             auto_update_task = asyncio.create_task(
                 auto_update_loop()
             )
             logger.info(
-                "Auto updater started successfully."
+                "Scientific auto updater started."
             )
         except Exception:
             logger.exception(
-                "Failed to start auto updater."
+                "Failed to start scientific auto updater."
             )
             auto_update_task = None
     else:
         logger.info(
-            "Automatic resource updater is disabled."
+            "Scientific auto updater is disabled."
         )
     # --------------------------------------------------------
-    # 10. Send startup notification
+    # 11. Startup notification
     # --------------------------------------------------------
     await send_startup_message(bot)
     logger.info("=" * 70)
@@ -260,16 +254,18 @@ async def startup() -> tuple[Bot, Dispatcher]:
 # ============================================================
 # STARTUP MESSAGE
 # ============================================================
-async def send_startup_message(bot: Bot) -> None:
+async def send_startup_message(
+    bot: Bot,
+) -> None:
     """
-    ارسال پیام شروع به کار به کاربر مجاز.
+    ارسال پیام شروع کار برای کاربران مجاز.
     """
     if not ALLOWED_USER_IDS:
         logger.warning(
             "No allowed users configured."
         )
         return
-    startup_text = (
+    text = (
         "🟢 <b>علی دانش‌یار فعال شد</b>\n\n"
         "دستیار شخصی پژوهش، آموزش و آمادگی آزمون آماده است.\n\n"
         "📚 آموزش جامع\n"
@@ -278,56 +274,61 @@ async def send_startup_message(bot: Bot) -> None:
         "🔎 جستجوی هوشمند\n"
         "📄 کتابخانه شخصی\n"
         "🧠 ابزار مطالعه\n"
-        "📅 برنامه مطالعه\n\n"
+        "📅 برنامه مطالعه\n"
+        "⭐ ذخیره‌شده‌ها\n\n"
         "🔐 دسترسی این ربات خصوصی است."
     )
     for user_id in ALLOWED_USER_IDS:
         try:
             await bot.send_message(
                 chat_id=user_id,
-                text=startup_text,
+                text=text,
             )
             logger.info(
-                "Startup message sent to user %s.",
+                "Startup message sent to %s.",
                 user_id,
             )
         except Exception:
             logger.exception(
-                "Failed to send startup message to user %s.",
+                "Failed to send startup message to %s.",
                 user_id,
             )
 # ============================================================
 # SHUTDOWN
 # ============================================================
-async def shutdown(bot: Bot) -> None:
-    """
-    خاموش‌سازی تمیز ربات.
-    """
+async def shutdown(
+    bot: Bot,
+) -> None:
     global health_runner
     global auto_update_task
     logger.info("=" * 70)
-    logger.info("Shutting down %s...", BOT_NAME)
+    logger.info(
+        "Shutting down %s...",
+        BOT_NAME,
+    )
     logger.info("=" * 70)
     # --------------------------------------------------------
-    # Stop Auto Updater
+    # Stop auto updater
     # --------------------------------------------------------
     if auto_update_task is not None:
         logger.info(
             "Stopping auto updater..."
         )
         auto_update_task.cancel()
-        with suppress(asyncio.CancelledError):
+        with suppress(
+            asyncio.CancelledError
+        ):
             await auto_update_task
         auto_update_task = None
         logger.info(
             "Auto updater stopped."
         )
     # --------------------------------------------------------
-    # Stop Health Server
+    # Stop HTTP server
     # --------------------------------------------------------
     if health_runner is not None:
         logger.info(
-            "Stopping health server..."
+            "Stopping HTTP health server..."
         )
         try:
             await stop_health_server(
@@ -335,7 +336,7 @@ async def shutdown(bot: Bot) -> None:
             )
         except Exception:
             logger.exception(
-                "Error while stopping health server."
+                "Failed to stop HTTP health server."
             )
         health_runner = None
     # --------------------------------------------------------
@@ -343,13 +344,13 @@ async def shutdown(bot: Bot) -> None:
     # --------------------------------------------------------
     if bot is not None:
         logger.info(
-            "Closing Telegram bot session..."
+            "Closing Telegram session..."
         )
         try:
             await bot.session.close()
         except Exception:
             logger.exception(
-                "Error while closing Telegram session."
+                "Failed to close Telegram session."
             )
     logger.info(
         "%s stopped.",
@@ -359,27 +360,17 @@ async def shutdown(bot: Bot) -> None:
 # MAIN
 # ============================================================
 async def main() -> None:
-    """
-    نقطه ورود اصلی برنامه.
-    """
     bot = None
     try:
-        # ----------------------------------------------------
-        # Startup
-        # ----------------------------------------------------
         bot, dp = await startup()
-        # ----------------------------------------------------
-        # Start polling
-        # ----------------------------------------------------
         logger.info(
             "Starting Telegram polling..."
         )
-        logger.info(
-            "Bot is now listening for updates."
-        )
         await dp.start_polling(
             bot,
-            allowed_updates=dp.resolve_used_update_types(),
+            allowed_updates=(
+                dp.resolve_used_update_types()
+            ),
         )
     except KeyboardInterrupt:
         logger.info(
@@ -398,7 +389,7 @@ async def main() -> None:
         if bot is not None:
             await shutdown(bot)
 # ============================================================
-# PYTHON ENTRY POINT
+# ENTRY POINT
 # ============================================================
 if __name__ == "__main__":
     try:
@@ -409,6 +400,6 @@ if __name__ == "__main__":
         )
     except Exception:
         logger.exception(
-            "Application terminated because of an unhandled error."
+            "Unhandled application error."
         )
         sys.exit(1)
