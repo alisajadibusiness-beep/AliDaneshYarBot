@@ -25,7 +25,10 @@ from contextlib import suppress
 # STARTUP DIAGNOSTIC
 # ============================================================
 
-print(">>> ALIDANESHYAR BOT.PY STARTED <<<", flush=True)
+print(
+    ">>> ALIDANESHYAR BOT.PY STARTED <<<",
+    flush=True,
+)
 
 
 # ============================================================
@@ -61,10 +64,19 @@ from database import (
 
 
 # ============================================================
-# HANDLERS
+# START / MAIN MENU
 # ============================================================
 
-from handlers.start import router as start_router
+from handlers.start import (
+    router as start_router,
+    main_keyboard,
+)
+
+
+# ============================================================
+# OTHER HANDLERS
+# ============================================================
+
 from handlers.search import router as search_router
 from handlers.education import router as education_router
 from handlers.exams import router as exams_router
@@ -102,14 +114,67 @@ from web.health_server import (
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    format=(
+        "%(asctime)s | "
+        "%(levelname)s | "
+        "%(name)s | "
+        "%(message)s"
+    ),
     handlers=[
         logging.StreamHandler(sys.stdout),
     ],
     force=True,
 )
 
-logger = logging.getLogger("AliDaneshYarBot")
+logger = logging.getLogger(
+    "AliDaneshYarBot"
+)
+
+
+# ============================================================
+# SEND STARTUP MENU
+# ============================================================
+
+async def send_startup_menu(
+    bot: Bot,
+) -> None:
+
+    if not ALLOWED_USER_IDS:
+        logger.warning(
+            "No allowed users configured."
+        )
+        return
+
+    startup_text = (
+        "🏠 <b>علی دانش‌یار آماده است</b>\n\n"
+        "دستیار شخصی پژوهش، آموزش و آمادگی آزمون "
+        "فعال شد.\n\n"
+        "از منوی زیر بخش موردنظرت را انتخاب کن:"
+    )
+
+    for user_id in ALLOWED_USER_IDS:
+
+        try:
+
+            await bot.send_message(
+                chat_id=user_id,
+                text=startup_text,
+                reply_markup=main_keyboard(),
+                parse_mode="HTML",
+            )
+
+            logger.info(
+                "Main menu sent to allowed user %s.",
+                user_id,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Could not send startup menu "
+                "to user %s.",
+                user_id,
+            )
 
 
 # ============================================================
@@ -118,13 +183,18 @@ logger = logging.getLogger("AliDaneshYarBot")
 
 async def main() -> None:
 
-    print(">>> MAIN FUNCTION STARTED <<<", flush=True)
+    print(
+        ">>> MAIN FUNCTION STARTED <<<",
+        flush=True,
+    )
 
     # --------------------------------------------------------
-    # Configuration validation
+    # Configuration
     # --------------------------------------------------------
 
-    logger.info("Validating configuration...")
+    logger.info(
+        "Validating configuration..."
+    )
 
     validate_config()
 
@@ -165,11 +235,15 @@ async def main() -> None:
     # Database
     # --------------------------------------------------------
 
-    logger.info("Initializing database...")
+    logger.info(
+        "Initializing database..."
+    )
 
     await init_database()
 
-    logger.info("Database initialized successfully.")
+    logger.info(
+        "Database initialized successfully."
+    )
 
 
     # --------------------------------------------------------
@@ -194,7 +268,9 @@ async def main() -> None:
     # Telegram Bot
     # --------------------------------------------------------
 
-    logger.info("Creating Telegram Bot instance...")
+    logger.info(
+        "Creating Telegram Bot instance..."
+    )
 
     bot = Bot(
         token=BOT_TOKEN,
@@ -202,26 +278,62 @@ async def main() -> None:
 
     dp = Dispatcher()
 
-    logger.info("Telegram Dispatcher created.")
+    logger.info(
+        "Telegram Dispatcher created."
+    )
 
 
     # --------------------------------------------------------
     # Register routers
     # --------------------------------------------------------
 
-    logger.info("Registering handlers...")
+    logger.info(
+        "Registering handlers..."
+    )
 
-    dp.include_router(start_router)
-    dp.include_router(search_router)
-    dp.include_router(education_router)
-    dp.include_router(exams_router)
-    dp.include_router(articles_router)
-    dp.include_router(library_router)
-    dp.include_router(quiz_router)
-    dp.include_router(flashcards_router)
-    dp.include_router(progress_router)
-    dp.include_router(study_plan_router)
-    dp.include_router(admin_router)
+    dp.include_router(
+        start_router
+    )
+
+    dp.include_router(
+        search_router
+    )
+
+    dp.include_router(
+        education_router
+    )
+
+    dp.include_router(
+        exams_router
+    )
+
+    dp.include_router(
+        articles_router
+    )
+
+    dp.include_router(
+        library_router
+    )
+
+    dp.include_router(
+        quiz_router
+    )
+
+    dp.include_router(
+        flashcards_router
+    )
+
+    dp.include_router(
+        progress_router
+    )
+
+    dp.include_router(
+        study_plan_router
+    )
+
+    dp.include_router(
+        admin_router
+    )
 
     logger.info(
         "All Telegram handlers registered successfully."
@@ -229,18 +341,18 @@ async def main() -> None:
 
 
     # --------------------------------------------------------
-    # Health server
+    # Runtime resources
     # --------------------------------------------------------
 
     health_runner = None
-
-    # --------------------------------------------------------
-    # Auto updater task
-    # --------------------------------------------------------
-
     updater_task = None
 
+
     try:
+
+        # ----------------------------------------------------
+        # Health server
+        # ----------------------------------------------------
 
         logger.info(
             "Starting HTTP health server on %s:%s...",
@@ -258,13 +370,14 @@ async def main() -> None:
         )
 
         logger.info(
-            "Health endpoint: http://0.0.0.0:%s/health",
+            "Health endpoint: "
+            "http://0.0.0.0:%s/health",
             PORT,
         )
 
 
         # ----------------------------------------------------
-        # Telegram webhook
+        # Remove Telegram webhook
         # ----------------------------------------------------
 
         logger.info(
@@ -289,7 +402,24 @@ async def main() -> None:
 
 
         # ----------------------------------------------------
-        # Automatic research updater
+        # Startup menu
+        # ----------------------------------------------------
+
+        logger.info(
+            "Sending main menu to allowed users..."
+        )
+
+        await send_startup_menu(
+            bot
+        )
+
+        logger.info(
+            "Main menu startup notification completed."
+        )
+
+
+        # ----------------------------------------------------
+        # Automatic updater
         # ----------------------------------------------------
 
         logger.info(
@@ -319,7 +449,9 @@ async def main() -> None:
 
         await dp.start_polling(
             bot,
-            allowed_updates=dp.resolve_used_update_types(),
+            allowed_updates=(
+                dp.resolve_used_update_types()
+            ),
         )
 
 
@@ -344,7 +476,7 @@ async def main() -> None:
     finally:
 
         # ----------------------------------------------------
-        # Stop automatic updater
+        # Stop updater
         # ----------------------------------------------------
 
         if updater_task is not None:
@@ -363,7 +495,7 @@ async def main() -> None:
 
 
         # ----------------------------------------------------
-        # Stop HTTP server
+        # Stop health server
         # ----------------------------------------------------
 
         if health_runner is not None:
